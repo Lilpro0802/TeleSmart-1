@@ -164,6 +164,15 @@ function bindPanel(refs) {
   var closeBtn = refs.closeBtn;
   var openClass = NS + "-open";
 
+  function scrollMessagesToBottom() {
+    if (!refs.messagesEl) return;
+    window.requestAnimationFrame(function () {
+      window.requestAnimationFrame(function () {
+        refs.messagesEl.scrollTop = refs.messagesEl.scrollHeight;
+      });
+    });
+  }
+
   function setOpen(open) {
     panel.classList.toggle(openClass, open);
     panel.setAttribute("aria-hidden", open ? "false" : "true");
@@ -178,6 +187,7 @@ function bindPanel(refs) {
       window.setTimeout(function () {
         refs.inputEl.focus();
       }, 0);
+      scrollMessagesToBottom();
     }
   }
 

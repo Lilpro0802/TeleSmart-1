@@ -8,8 +8,8 @@ import { getKnowledgeMatch } from "./knowledge.js";
 var SS_MESSAGES = "rishit-chatbot-messages-v1";
 var SS_NAV = "rishit-chatbot-nav-v1";
 
-var BOT_REPLY_DELAY_MS = 400;
-var BUTTON_ACTION_DELAY_MS = 200;
+var BOT_REPLY_DELAY_MS = 120;
+var BUTTON_ACTION_DELAY_MS = 80;
 
 var URL_PLANS = "/Pages/broadband-plans.html";
 var URL_CONTACT = "/Pages/Contactus.html";
@@ -148,10 +148,11 @@ export function setupMessaging(els) {
   /**
    * @param {string | { text: string, buttons?: {label: string, action: string}[] }} content
    * @param {"user"|"bot"} role
-   * @param {{ skipPersist?: boolean }} [opts]
+   * @param {{ skipPersist?: boolean, skipScroll?: boolean }} [opts]
    */
   function appendMessage(content, role, opts) {
     var skipPersist = opts && opts.skipPersist;
+    var skipScroll = opts && opts.skipScroll;
     var text =
       typeof content === "string" ? content : (content && content.text) || "";
     var buttons =
@@ -192,7 +193,7 @@ export function setupMessaging(els) {
     }
 
     messagesEl.appendChild(row);
-    scrollToBottom();
+    if (!skipScroll) scrollToBottom();
 
     if (!skipPersist) {
       messagesStore.push({
@@ -479,7 +480,7 @@ export function setupMessaging(els) {
           buttons: Array.isArray(m.buttons) ? m.buttons : undefined,
         },
         m.role === "user" ? "user" : "bot",
-        { skipPersist: true }
+        { skipPersist: true, skipScroll: true }
       );
     }
     scrollToBottom();
@@ -497,7 +498,6 @@ export function setupMessaging(els) {
     appendMessage(trimmed, "user");
     inputEl.value = "";
     adjustTextareaHeight();
-    scrollToBottom();
 
     var knowledgeMatch = getKnowledgeMatch(rawText);
     var intentMatch = getIntentMatch(rawText);
@@ -523,7 +523,6 @@ export function setupMessaging(els) {
     window.setTimeout(function () {
       appendMessage(reply, "bot");
       padTrailingMenuIfNeeded();
-      scrollToBottom();
     }, BOT_REPLY_DELAY_MS);
   }
 
