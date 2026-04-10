@@ -5,6 +5,7 @@
 
 import { setupChatbotUI, ROOT_ID } from "./ui.js";
 import { setupMessaging } from "./messages.js";
+import { setupSpaNavigation } from "./spa-nav.js";
 
 var VERSION = "2.0.0";
 
@@ -71,6 +72,7 @@ function init() {
 }
 
 function boot() {
+  setupSpaNavigation();
   init();
 }
 
