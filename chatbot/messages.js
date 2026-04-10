@@ -96,6 +96,7 @@ export function setupMessaging(els) {
 
   /** @type {{ role: string, text: string, buttons?: {label: string, action: string}[] }[]} */
   var messagesStore = [];
+  var isRestoringHistory = false;
 
   function persistNav() {
     try {
@@ -193,7 +194,7 @@ export function setupMessaging(els) {
     }
 
     messagesEl.appendChild(row);
-    if (!skipScroll) scrollToBottom();
+    if (!skipScroll && !isRestoringHistory) scrollToBottom();
 
     if (!skipPersist) {
       messagesStore.push({
@@ -466,6 +467,7 @@ export function setupMessaging(els) {
     if (!Array.isArray(parsed)) return;
 
     messagesStore = [];
+    isRestoringHistory = true;
     for (var i = 0; i < parsed.length; i++) {
       var m = parsed[i];
       if (!m || !m.role || typeof m.text !== "string") continue;
@@ -483,8 +485,9 @@ export function setupMessaging(els) {
         { skipPersist: true, skipScroll: true }
       );
     }
-    scrollToBottom();
     padTrailingMenuIfNeeded();
+    isRestoringHistory = false;
+    scrollToBottom();
   }
 
   loadNavStack();
