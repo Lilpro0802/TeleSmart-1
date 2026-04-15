@@ -4,19 +4,36 @@
 
 import { getIntentMatch, getResponse } from "./intents.js";
 import { getKnowledgeMatch } from "./knowledge.js";
+import { SCORE_BOOSTS } from "./score-boosts.js";
 
-var SS_MESSAGES = "rishit-chatbot-messages-v1";
-var SS_NAV = "rishit-chatbot-nav-v1";
+var R = SCORE_BOOSTS.routing;
+
+var STORAGE_KEYS = {
+  messages: "rishit-chatbot-messages-v1",
+  nav: "rishit-chatbot-nav-v1",
+};
+
+/** Delegated control for menu buttons (see setupMessaging click handler). */
+var DATA_CHATBOT_ACTION = "data-chatbot-action";
 
 var BOT_REPLY_DELAY_MS = 120;
 var BUTTON_ACTION_DELAY_MS = 80;
+var MAX_INPUT_PX = 120;
 
-var URL_PLANS = "/Pages/broadband-plans.html";
-var URL_CONTACT = "/Pages/Contactus.html";
-var URL_FEASIBILITY = "/Pages/Check-feasibility.html";
+var URLS = {
+  VIEW_PLANS: "/Pages/broadband-plans.html",
+  CONTACT: "/Pages/Contactus.html",
+  OPEN_FEASIBILITY: "/Pages/Check-feasibility.html",
+};
 
 function btn(label, action) {
   return { label: label, action: action };
+}
+
+function cloneButtons(buttons) {
+  return buttons.map(function (button) {
+    return { label: button.label, action: button.action };
+  });
 }
 
 export var BUTTONS_MAIN_MENU = [
@@ -80,16 +97,166 @@ var TIER_TEXT = {
 };
 
 /**
+ * Navigation screens: text, buttons, and stackAfter (full nav stack on that screen).
+ * @type {Record<string, { text?: string, resolveText?: (action: string) => string, buttons: {label: string, action: string}[], stackAfter: string[] }>}
+ */
+var NAV_STATES = {
+  HOME: {
+    text: "Here are the main options:",
+    buttons: BUTTONS_MAIN_MENU,
+    stackAfter: [],
+  },
+  INTRO: {
+    text: "Hi! I can help you with:",
+    buttons: BUTTONS_MAIN_MENU,
+    stackAfter: [],
+  },
+  TRAILING_PROMPT: {
+    text: "What would you like to do next?",
+    buttons: BUTTONS_MAIN_MENU,
+    stackAfter: [],
+  },
+  INTERNET: {
+    text: "What kind of internet service are you interested in?",
+    buttons: BUTTONS_INTERNET,
+    stackAfter: ["INTERNET"],
+  },
+  BROADBAND: {
+    text: "Broadband — explore plans or get in touch.",
+    buttons: BUTTONS_BROADBAND,
+    stackAfter: ["INTERNET", "BROADBAND"],
+  },
+  ENTERPRISE: {
+    text: "Enterprise network — which size best describes your needs?",
+    buttons: BUTTONS_ENTERPRISE,
+    stackAfter: ["INTERNET", "ENTERPRISE"],
+  },
+  TIER: {
+    resolveText: function (tierAction) {
+      return TIER_TEXT[tierAction] || "";
+    },
+    buttons: BUTTONS_AFTER_TIER,
+    stackAfter: ["INTERNET", "ENTERPRISE", "TIER"],
+  },
+  MORE: {
+    text: "More ways we can help:",
+    buttons: BUTTONS_MORE,
+    stackAfter: ["MORE"],
+  },
+  FEASIBILITY: {
+    text: "See if service is available at your location (placeholder — open our feasibility checker when you’re ready).",
+    buttons: BUTTONS_FEASIBILITY_PLACEHOLDER,
+    stackAfter: ["INTERNET", "BROADBAND", "FEASIBILITY"],
+  },
+  SERVICES: {
+    text: "We offer WAN, managed services, enterprise internet, broadband, voice, and more. Use the site menu to explore, or pick a path below.",
+    buttons: BUTTONS_SERVICES_OVERVIEW,
+    stackAfter: ["MORE", "SERVICES"],
+  },
+};
+
+/** Stack frame on top -> NAV_STATES id (static screens only). */
+var STACK_TOP_TO_STATE = {
+  INTERNET: "INTERNET",
+  BROADBAND: "BROADBAND",
+  ENTERPRISE: "ENTERPRISE",
+  MORE: "MORE",
+  FEASIBILITY: "FEASIBILITY",
+  SERVICES: "SERVICES",
+};
+
+/** Button action -> NAV_STATES id (non-tier). */
+var ACTION_TO_NAV_STATE = {
+  INTERNET: "INTERNET",
+  BROADBAND: "BROADBAND",
+  ENTERPRISE: "ENTERPRISE",
+  MORE_OPTIONS: "MORE",
+  CHECK_FEASIBILITY: "FEASIBILITY",
+  SERVICES_OVERVIEW: "SERVICES",
+};
+
+function getNavMessagePayload(stateId, tierAction) {
+  var def = NAV_STATES[stateId];
+  if (!def) return createMessagePayload("");
+  var text = def.resolveText ? def.resolveText(tierAction || "") : def.text || "";
+  return createMessagePayload(text, def.buttons);
+}
+
+function getStorageJson(key, fallbackValue) {
+  try {
+    var raw = window.sessionStorage.getItem(key);
+    if (!raw) return fallbackValue;
+    var parsed = JSON.parse(raw);
+    return parsed == null ? fallbackValue : parsed;
+  } catch (err) {
+    return fallbackValue;
+  }
+}
+
+function setStorageJson(key, value) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {}
+}
+
+function createMessagePayload(text, buttons) {
+  return {
+    text: text || "",
+    buttons: buttons ? cloneButtons(buttons) : undefined,
+  };
+}
+
+function createMessageRecord(role, payload) {
+  return {
+    role: role,
+    text: payload.text,
+    buttons: payload.buttons,
+  };
+}
+
+function getCurrentNavStateId(navStack) {
+  if (!navStack.length) return "HOME";
+  var top = navStack[navStack.length - 1];
+  if (top === "TIER") return "HOME";
+  return STACK_TOP_TO_STATE[top] || "HOME";
+}
+
+function getReplyFromMatches(rawText) {
+  var knowledgeMatch = getKnowledgeMatch(rawText);
+  var intentMatch = getIntentMatch(rawText);
+  var knowledgeEligible =
+    knowledgeMatch && knowledgeMatch.score >= R.KNOWLEDGE_ELIGIBLE_MIN_SCORE
+      ? knowledgeMatch
+      : null;
+
+  var forceIntent =
+    intentMatch &&
+    intentMatch.score >= R.FORCE_INTENT_MIN_SCORE &&
+    (intentMatch.matches || 0) >= R.FORCE_INTENT_MIN_KEYWORD_MATCHES;
+
+  if (
+    !forceIntent &&
+    knowledgeEligible &&
+    knowledgeEligible.score > intentMatch.score
+  ) {
+    return knowledgeEligible.answer;
+  }
+
+  return getResponse(intentMatch.key);
+}
+
+/**
  * @param {object} els
  * @param {HTMLElement} els.messagesEl
  * @param {HTMLTextAreaElement} els.inputEl
  * @param {HTMLButtonElement} els.sendBtn
+ * @param {HTMLElement} [els.root] Widget root for event delegation (`[data-chatbot-action]` clicks).
  */
 export function setupMessaging(els) {
   var messagesEl = els.messagesEl;
   var inputEl = els.inputEl;
   var sendBtn = els.sendBtn;
-  var maxInputPx = 120;
+  var delegateRoot = els.root || messagesEl;
 
   /** @type {string[]} */
   var navStack = [];
@@ -99,23 +266,12 @@ export function setupMessaging(els) {
   var isRestoringHistory = false;
 
   function persistNav() {
-    try {
-      window.sessionStorage.setItem(SS_NAV, JSON.stringify(navStack));
-    } catch (err) {}
+    setStorageJson(STORAGE_KEYS.nav, navStack);
   }
 
   function loadNavStack() {
-    try {
-      var raw = window.sessionStorage.getItem(SS_NAV);
-      if (!raw) {
-        navStack = [];
-        return;
-      }
-      var p = JSON.parse(raw);
-      navStack = Array.isArray(p) ? p : [];
-    } catch (e) {
-      navStack = [];
-    }
+    var parsed = getStorageJson(STORAGE_KEYS.nav, []);
+    navStack = Array.isArray(parsed) ? parsed : [];
   }
 
   function scrollToBottom() {
@@ -127,15 +283,31 @@ export function setupMessaging(els) {
     });
   }
 
+  function appendTypingIndicator() {
+    var existing = messagesEl.querySelector('.rishit-chatbot-typing-row');
+    if (existing) return;
+    var row = document.createElement('div');
+    row.className = 'rishit-chatbot-message rishit-chatbot-message--bot rishit-chatbot-typing-row';
+    var bubble = document.createElement('div');
+    bubble.className = 'rishit-chatbot-bubble rishit-chatbot-typing-indicator';
+    bubble.innerHTML = '<span></span><span></span><span></span>';
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function removeTypingIndicator() {
+    var row = messagesEl.querySelector('.rishit-chatbot-typing-row');
+    if (row) row.remove();
+  }
+
   function persistMessages() {
-    try {
-      window.sessionStorage.setItem(SS_MESSAGES, JSON.stringify(messagesStore));
-    } catch (err) {}
+    setStorageJson(STORAGE_KEYS.messages, messagesStore);
   }
 
   function adjustTextareaHeight() {
     inputEl.style.height = "auto";
-    var next = Math.min(inputEl.scrollHeight, maxInputPx);
+    var next = Math.min(inputEl.scrollHeight, MAX_INPUT_PX);
     inputEl.style.height = next + "px";
   }
 
@@ -146,6 +318,47 @@ export function setupMessaging(els) {
     }
   }
 
+  function createActionButton(buttonDef) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "rishit-chatbot-action-btn";
+    button.setAttribute(DATA_CHATBOT_ACTION, buttonDef.action);
+    button.textContent = buttonDef.label;
+    return button;
+  }
+
+  function createMessageNode(role, payload) {
+    var row = document.createElement("div");
+    row.className = "rishit-chatbot-message rishit-chatbot-message--" + role;
+
+    if (role === "bot" && payload.buttons && payload.buttons.length) {
+      removeAllActionContainers();
+
+      var block = document.createElement("div");
+      block.className = "rishit-chatbot-bot-block";
+
+      var bubble = document.createElement("div");
+      bubble.className = "rishit-chatbot-bubble";
+      bubble.textContent = payload.text;
+      block.appendChild(bubble);
+
+      var actions = document.createElement("div");
+      actions.className = "rishit-chatbot-actions";
+      for (var i = 0; i < payload.buttons.length; i++) {
+        actions.appendChild(createActionButton(payload.buttons[i]));
+      }
+      block.appendChild(actions);
+      row.appendChild(block);
+      return row;
+    }
+
+    var bubbleSingle = document.createElement("div");
+    bubbleSingle.className = "rishit-chatbot-bubble";
+    bubbleSingle.textContent = payload.text;
+    row.appendChild(bubbleSingle);
+    return row;
+  }
+
   /**
    * @param {string | { text: string, buttons?: {label: string, action: string}[] }} content
    * @param {"user"|"bot"} role
@@ -154,56 +367,30 @@ export function setupMessaging(els) {
   function appendMessage(content, role, opts) {
     var skipPersist = opts && opts.skipPersist;
     var skipScroll = opts && opts.skipScroll;
-    var text =
-      typeof content === "string" ? content : (content && content.text) || "";
-    var buttons =
-      typeof content === "object" && content && content.buttons
-        ? content.buttons
-        : undefined;
-
-    var row = document.createElement("div");
-    row.className =
-      "rishit-chatbot-message rishit-chatbot-message--" + role;
-
-    if (role === "bot" && buttons && buttons.length) {
-      removeAllActionContainers();
-      var block = document.createElement("div");
-      block.className = "rishit-chatbot-bot-block";
-      var bubble = document.createElement("div");
-      bubble.className = "rishit-chatbot-bubble";
-      bubble.textContent = text;
-      block.appendChild(bubble);
-
-      var actions = document.createElement("div");
-      actions.className = "rishit-chatbot-actions";
-      for (var i = 0; i < buttons.length; i++) {
-        var b = document.createElement("button");
-        b.type = "button";
-        b.className = "rishit-chatbot-action-btn";
-        b.setAttribute("data-chatbot-action", buttons[i].action);
-        b.textContent = buttons[i].label;
-        actions.appendChild(b);
-      }
-      block.appendChild(actions);
-      row.appendChild(block);
-    } else {
-      var bubbleSingle = document.createElement("div");
-      bubbleSingle.className = "rishit-chatbot-bubble";
-      bubbleSingle.textContent = text;
-      row.appendChild(bubbleSingle);
-    }
+    var payload =
+      typeof content === "string"
+        ? createMessagePayload(content)
+        : createMessagePayload(
+            content && content.text,
+            content && content.buttons
+          );
+    var row = createMessageNode(role, payload);
 
     messagesEl.appendChild(row);
     if (!skipScroll && !isRestoringHistory) scrollToBottom();
 
     if (!skipPersist) {
-      messagesStore.push({
-        role: role,
-        text: text,
-        buttons: buttons,
-      });
+      messagesStore.push(createMessageRecord(role, payload));
       persistMessages();
     }
+  }
+
+  function transitionToNavState(stateId, tierAction) {
+    var def = NAV_STATES[stateId];
+    if (!def) return;
+    navStack = def.stackAfter.slice();
+    persistNav();
+    appendMessage(getNavMessagePayload(stateId, tierAction), "bot");
   }
 
   function padTrailingMenuIfNeeded() {
@@ -212,212 +399,46 @@ export function setupMessaging(els) {
     if (last.buttons && last.buttons.length > 0) return;
     navStack = [];
     persistNav();
-    appendMessage(
-      {
-        text: "What would you like to do next?",
-        buttons: BUTTONS_MAIN_MENU,
-      },
-      "bot"
-    );
+    appendMessage(getNavMessagePayload("TRAILING_PROMPT"), "bot");
   }
 
   function renderMenuFromStackTop() {
-    if (navStack.length === 0) {
-      appendMessage(
-        {
-          text: "Here are the main options:",
-          buttons: BUTTONS_MAIN_MENU,
-        },
-        "bot"
-      );
-      return;
+    if (navStack.length && navStack[navStack.length - 1] === "TIER") {
+      navStack = [];
+      persistNav();
     }
-    var top = navStack[navStack.length - 1];
-    switch (top) {
-      case "INTERNET":
-        appendMessage(
-          {
-            text: "What kind of internet service are you interested in?",
-            buttons: BUTTONS_INTERNET,
-          },
-          "bot"
-        );
-        break;
-      case "BROADBAND":
-        appendMessage(
-          {
-            text: "Broadband — explore plans or get in touch.",
-            buttons: BUTTONS_BROADBAND,
-          },
-          "bot"
-        );
-        break;
-      case "ENTERPRISE":
-        appendMessage(
-          {
-            text: "Enterprise network — which size best describes your needs?",
-            buttons: BUTTONS_ENTERPRISE,
-          },
-          "bot"
-        );
-        break;
-      case "MORE":
-        appendMessage(
-          {
-            text: "More ways we can help:",
-            buttons: BUTTONS_MORE,
-          },
-          "bot"
-        );
-        break;
-      case "FEASIBILITY":
-        appendMessage(
-          {
-            text: "See if service is available at your location (placeholder — open our feasibility checker when you’re ready).",
-            buttons: BUTTONS_FEASIBILITY_PLACEHOLDER,
-          },
-          "bot"
-        );
-        break;
-      case "SERVICES":
-        appendMessage(
-          {
-            text: "We offer WAN, managed services, enterprise internet, broadband, voice, and more. Use the site menu to explore, or pick a path below.",
-            buttons: BUTTONS_SERVICES_OVERVIEW,
-          },
-          "bot"
-        );
-        break;
-      default:
-        navStack = [];
-        persistNav();
-        appendMessage(
-          {
-            text: "Here are the main options:",
-            buttons: BUTTONS_MAIN_MENU,
-          },
-          "bot"
-        );
-    }
+    appendMessage(getNavMessagePayload(getCurrentNavStateId(navStack)), "bot");
   }
 
   function handleButtonAction(action) {
-    switch (action) {
-      case "BACK":
-        if (navStack.length > 0) navStack.pop();
-        persistNav();
-        renderMenuFromStackTop();
-        break;
-      case "MAIN_MENU":
-        navStack = [];
-        persistNav();
-        appendMessage(
-          {
-            text: "Here are the main options:",
-            buttons: BUTTONS_MAIN_MENU,
-          },
-          "bot"
-        );
-        break;
-      case "INTERNET":
-        navStack = ["INTERNET"];
-        persistNav();
-        appendMessage(
-          {
-            text: "What kind of internet service are you interested in?",
-            buttons: BUTTONS_INTERNET,
-          },
-          "bot"
-        );
-        break;
-      case "BROADBAND":
-        navStack = ["INTERNET", "BROADBAND"];
-        persistNav();
-        appendMessage(
-          {
-            text: "Broadband — explore plans or get in touch.",
-            buttons: BUTTONS_BROADBAND,
-          },
-          "bot"
-        );
-        break;
-      case "ENTERPRISE":
-        navStack = ["INTERNET", "ENTERPRISE"];
-        persistNav();
-        appendMessage(
-          {
-            text: "Enterprise network — which size best describes your needs?",
-            buttons: BUTTONS_ENTERPRISE,
-          },
-          "bot"
-        );
-        break;
-      case "SMALL":
-      case "MEDIUM":
-      case "LARGE":
-        navStack = ["INTERNET", "ENTERPRISE", "TIER"];
-        persistNav();
-        appendMessage(
-          {
-            text: TIER_TEXT[action],
-            buttons: BUTTONS_AFTER_TIER,
-          },
-          "bot"
-        );
-        break;
-      case "MORE_OPTIONS":
-        navStack = ["MORE"];
-        persistNav();
-        appendMessage(
-          {
-            text: "More ways we can help:",
-            buttons: BUTTONS_MORE,
-          },
-          "bot"
-        );
-        break;
-      case "CHECK_FEASIBILITY":
-        navStack = ["INTERNET", "BROADBAND", "FEASIBILITY"];
-        persistNav();
-        appendMessage(
-          {
-            text: "See if service is available at your location (placeholder — open our feasibility checker when you’re ready).",
-            buttons: BUTTONS_FEASIBILITY_PLACEHOLDER,
-          },
-          "bot"
-        );
-        break;
-      case "OPEN_FEASIBILITY":
-        window.location.assign(URL_FEASIBILITY);
-        break;
-      case "SERVICES_OVERVIEW":
-        navStack = ["MORE", "SERVICES"];
-        persistNav();
-        appendMessage(
-          {
-            text: "We offer WAN, managed services, enterprise internet, broadband, voice, and more. Use the site menu to explore, or pick a path below.",
-            buttons: BUTTONS_SERVICES_OVERVIEW,
-          },
-          "bot"
-        );
-        break;
-      case "VIEW_PLANS":
-        window.location.assign(URL_PLANS);
-        break;
-      case "CONTACT":
-        window.location.assign(URL_CONTACT);
-        break;
-      default:
-        break;
+    if (action === "BACK") {
+      if (navStack.length > 0) navStack.pop();
+      persistNav();
+      renderMenuFromStackTop();
+      return;
+    }
+    if (action === "MAIN_MENU") {
+      transitionToNavState("HOME");
+      return;
+    }
+    if (action === "SMALL" || action === "MEDIUM" || action === "LARGE") {
+      transitionToNavState("TIER", action);
+      return;
+    }
+    var navStateId = ACTION_TO_NAV_STATE[action];
+    if (navStateId) {
+      transitionToNavState(navStateId);
+      return;
+    }
+    var targetUrl = URLS[action];
+    if (targetUrl) {
+      window.location.assign(targetUrl);
+      return;
     }
   }
 
   function isInstantNavAction(action) {
-    return (
-      action === "VIEW_PLANS" ||
-      action === "CONTACT" ||
-      action === "OPEN_FEASIBILITY"
-    );
+    return !!URLS[action];
   }
 
   function runButtonFeedbackThen(action, actionBtn) {
@@ -426,7 +447,7 @@ export function setupMessaging(els) {
       return;
     }
     var actions = actionBtn.closest(".rishit-chatbot-actions");
-    if (!actions || !messagesEl.contains(actions)) {
+    if (!actions || !delegateRoot.contains(actions)) {
       handleButtonAction(action);
       return;
     }
@@ -440,30 +461,18 @@ export function setupMessaging(els) {
     }, BUTTON_ACTION_DELAY_MS);
   }
 
-  messagesEl.addEventListener("click", function (e) {
+  delegateRoot.addEventListener("click", function (e) {
     var target = e.target;
     if (!(target instanceof HTMLElement)) return;
-    var actionBtn = target.closest("[data-chatbot-action]");
-    if (!actionBtn || !messagesEl.contains(actionBtn)) return;
+    var actionBtn = target.closest("[" + DATA_CHATBOT_ACTION + "]");
+    if (!actionBtn || !delegateRoot.contains(actionBtn)) return;
     e.preventDefault();
-    var action = actionBtn.getAttribute("data-chatbot-action");
+    var action = actionBtn.getAttribute(DATA_CHATBOT_ACTION);
     if (action) runButtonFeedbackThen(action, actionBtn);
   });
 
   function loadPersistedMessages() {
-    var raw = null;
-    try {
-      raw = window.sessionStorage.getItem(SS_MESSAGES);
-    } catch (err) {
-      return;
-    }
-    if (!raw) return;
-    var parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      return;
-    }
+    var parsed = getStorageJson(STORAGE_KEYS.messages, []);
     if (!Array.isArray(parsed)) return;
 
     messagesStore = [];
@@ -471,19 +480,15 @@ export function setupMessaging(els) {
     for (var i = 0; i < parsed.length; i++) {
       var m = parsed[i];
       if (!m || !m.role || typeof m.text !== "string") continue;
-      messagesStore.push({
-        role: m.role,
-        text: m.text,
-        buttons: Array.isArray(m.buttons) ? m.buttons : undefined,
-      });
-      appendMessage(
-        {
-          text: m.text,
-          buttons: Array.isArray(m.buttons) ? m.buttons : undefined,
-        },
-        m.role === "user" ? "user" : "bot",
-        { skipPersist: true, skipScroll: true }
+      var payload = createMessagePayload(
+        m.text,
+        Array.isArray(m.buttons) ? m.buttons : undefined
       );
+      messagesStore.push(createMessageRecord(m.role, payload));
+      appendMessage(payload, m.role === "user" ? "user" : "bot", {
+        skipPersist: true,
+        skipScroll: true,
+      });
     }
     padTrailingMenuIfNeeded();
     isRestoringHistory = false;
@@ -502,28 +507,11 @@ export function setupMessaging(els) {
     inputEl.value = "";
     adjustTextareaHeight();
 
-    var knowledgeMatch = getKnowledgeMatch(rawText);
-    var intentMatch = getIntentMatch(rawText);
-    var knowledgeEligible =
-      knowledgeMatch && knowledgeMatch.score >= 2 ? knowledgeMatch : null;
+    var reply = getReplyFromMatches(rawText);
 
-    var forceIntent =
-      intentMatch &&
-      intentMatch.score >= 5 &&
-      (intentMatch.matches || 0) >= 2;
-
-    var reply;
-    if (
-      !forceIntent &&
-      knowledgeEligible &&
-      knowledgeEligible.score > intentMatch.score
-    ) {
-      reply = knowledgeEligible.answer;
-    } else {
-      reply = getResponse(intentMatch.key);
-    }
-
+    appendTypingIndicator();
     window.setTimeout(function () {
+      removeTypingIndicator();
       appendMessage(reply, "bot");
       padTrailingMenuIfNeeded();
     }, BOT_REPLY_DELAY_MS);
@@ -549,21 +537,14 @@ export function setupMessaging(els) {
   }
 
   function showFirstInteraction() {
-    navStack = [];
-    persistNav();
-    appendMessage(
-      {
-        text: "Hi! I can help you with:",
-        buttons: BUTTONS_MAIN_MENU,
-      },
-      "bot"
-    );
+    transitionToNavState("INTRO");
   }
 
   return {
     appendMessage: appendMessage,
     isEmpty: isEmpty,
     handleButtonAction: handleButtonAction,
+    scrollToBottom: scrollToBottom,
     showFirstInteraction: showFirstInteraction,
   };
 }

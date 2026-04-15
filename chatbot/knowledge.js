@@ -4,6 +4,9 @@
  */
 
 import { calculateScore, tokenizeForMatching } from "./utils.js";
+import { SCORE_BOOSTS } from "./score-boosts.js";
+
+var K = SCORE_BOOSTS.knowledge;
 
 /**
  * 6–8 knowledge entries only.
@@ -100,11 +103,13 @@ export function getKnowledgeMatch(userInput) {
         // recognizable start/end sequences.
         var kwNoSpace = kw.replace(/\s+/g, "");
         var textNoSpace = joinedTokens.replace(/\s+/g, "");
-        var head = kwNoSpace.slice(0, 3);
-        var tail = kwNoSpace.slice(-3);
+        var head = kwNoSpace.slice(0, K.PHRASE_HEAD_TAIL_SLICE_LEN);
+        var tail = kwNoSpace.slice(-K.PHRASE_HEAD_TAIL_SLICE_LEN);
         var phraseIncludes = head && tail ? (textNoSpace.includes(head) || textNoSpace.includes(tail)) : false;
 
-        kwScore = Math.max(partsScore, kwScore) + (phraseIncludes ? 1 : 0);
+        kwScore =
+          Math.max(partsScore, kwScore) +
+          (phraseIncludes ? K.PHRASE_SUBSTRING_SIGNAL_BONUS : 0);
       }
 
       score += kwScore;
@@ -112,7 +117,7 @@ export function getKnowledgeMatch(userInput) {
 
     // Boost knowledge priority when the user is clearly asking for information.
     if (hasPriority && score > 0) {
-      score += 2;
+      score += K.QUESTION_WORD_PRIORITY_BONUS;
     }
 
     if (score > bestScore) {
@@ -122,7 +127,7 @@ export function getKnowledgeMatch(userInput) {
   }
 
   // Unknown fallback tuning: if knowledge match is too weak, don't use it.
-  if (!bestItem || bestScore < 1) return null;
+  if (!bestItem || bestScore < K.MIN_RETURN_SCORE) return null;
 
   var answer =
     typeof bestItem.answer === "function" ? bestItem.answer() : bestItem.answer;

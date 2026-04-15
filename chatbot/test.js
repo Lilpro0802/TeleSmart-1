@@ -4,6 +4,9 @@
 
 import { getIntentMatch, getResponse } from "./intents.js";
 import { getKnowledgeMatch } from "./knowledge.js";
+import { SCORE_BOOSTS } from "./score-boosts.js";
+
+const R = SCORE_BOOSTS.routing;
 
 const STYLE = {
   section: "font-weight: 800; letter-spacing: .05em;",
@@ -252,8 +255,12 @@ const CRITICAL_TESTS = [
 function decideFinal(input) {
   const knowledge = getKnowledgeMatch(input);
   const intent = getIntentMatch(input);
-  const knowledgeEligible = knowledge && knowledge.score >= 2 ? knowledge : null;
-  const forceIntent = intent && intent.score >= 5 && (intent.matches || 0) >= 2;
+  const knowledgeEligible =
+    knowledge && knowledge.score >= R.KNOWLEDGE_ELIGIBLE_MIN_SCORE ? knowledge : null;
+  const forceIntent =
+    intent &&
+    intent.score >= R.FORCE_INTENT_MIN_SCORE &&
+    (intent.matches || 0) >= R.FORCE_INTENT_MIN_KEYWORD_MATCHES;
   const final =
     !forceIntent && knowledgeEligible && knowledgeEligible.score > intent.score
       ? { source: "knowledge", output: knowledgeEligible.answer, key: null }

@@ -2,6 +2,10 @@
  * Shared helpers: avatar URL and canned bot replies.
  */
 
+import { SCORE_BOOSTS } from "./score-boosts.js";
+
+var CS = SCORE_BOOSTS.calculateScore;
+
 export const BOT_AVATAR_URL =
   "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTaeP8hl62mjiOpCPEhzyPWAeGkP4JeYxyiSQ&s";
 
@@ -190,21 +194,23 @@ function hasExactPhrase(normalizedText, normalizedKeyword) {
 }
 
 function hasExactToken(inputTokens, keywordToken) {
-  for (var i = 0; i < inputTokens.length; i++) {
-    if (inputTokens[i] === keywordToken) return true;
-  }
-  return false;
+  return anyTokenMatches(inputTokens, function (token) {
+    return token === keywordToken;
+  });
 }
 
 function hasPartSimilarity(inputTokens, keywordPart) {
   var partLen = keywordPart.length;
-  for (var i = 0; i < inputTokens.length; i++) {
-    var token = inputTokens[i];
-    if (!token) continue;
+  return anyTokenMatches(inputTokens, function (token) {
+    if (!token) return false;
     if (token === keywordPart) return true;
 
     // For short parts, keep strict behavior: exact only.
-    if (partLen <= 4 || token.length <= 3) continue;
+    if (
+      partLen <= CS.HAS_PART_SIMILARITY_STRICT_PART_LEN ||
+      token.length <= CS.HAS_PART_SIMILARITY_STRICT_TOKEN_LEN
+    )
+      return false;
 
     if (
       isPartialMatch(token, keywordPart) ||
@@ -214,13 +220,19 @@ function hasPartSimilarity(inputTokens, keywordPart) {
     ) {
       return true;
     }
-  }
-  return false;
+    return false;
+  });
 }
 
 function hasOneCharToken(inputTokens) {
+  return anyTokenMatches(inputTokens, function (token) {
+    return !!token && token.length === 1;
+  });
+}
+
+function anyTokenMatches(inputTokens, predicate) {
   for (var i = 0; i < inputTokens.length; i++) {
-    if (inputTokens[i] && inputTokens[i].length === 1) return true;
+    if (predicate(inputTokens[i], i)) return true;
   }
   return false;
 }
@@ -228,11 +240,8 @@ function hasOneCharToken(inputTokens) {
 /**
  * calculateScore(inputTokens, keyword)
  *
- * Shared scoring used by both intents and knowledge:
- * - exact phrase match (word-boundaries) => +3
- * - full keyword match (present as a whole token OR whole phrase) => +2
- * - partial match (token-level typo/slang) => +1
- * Adds a small bonus for longer keywords to prefer more specific matches.
+ * Shared scoring used by both intents and knowledge; numeric weights live in
+ * SCORE_BOOSTS.calculateScore (exact/phrase, full match, partial, typo tiers, length weight).
  *
  * @param {string[]} inputTokens tokens from tokenizeForMatching()
  * @param {string} keyword
@@ -245,17 +254,21 @@ export function calculateScore(inputTokens, keyword) {
   var normalizedKeyword = normalizeForMatching(keyword);
   if (!normalizedKeyword) return 0;
 
-  var normalizedText = inputTokens.join(" ");
-  var bonus = normalizedKeyword.length / 10;
+   var normalizedText = inputTokens.join(" ");
+  var bonus = normalizedKeyword.length / CS.LENGTH_WEIGHT_DIVISOR;
   var kwLen = normalizedKeyword.length;
 
   // Short keywords (<= 4 chars): only accept exact token match, no partials.
-  if (kwLen > 0 && kwLen <= 4 && normalizedKeyword.indexOf(" ") === -1) {
+  if (
+    kwLen > 0 &&
+    kwLen <= CS.SHORT_STANDALONE_KEYWORD_MAX_LEN &&
+    normalizedKeyword.indexOf(" ") === -1
+  ) {
     for (var s = 0; s < inputTokens.length; s++) {
       if (inputTokens[s] === normalizedKeyword) {
         // Strong match so that short intent words like "sup", "hi", "yo" win
         // cleanly when present.
-        return 3 + bonus;
+        return CS.EXACT_OR_PHRASE_BASE + bonus;
       }
     }
     return 0;
@@ -263,12 +276,12 @@ export function calculateScore(inputTokens, keyword) {
 
   // 1) Exact phrase match (word boundaries)
   if (hasExactPhrase(normalizedText, normalizedKeyword)) {
-    return 3 + bonus;
+    return CS.EXACT_OR_PHRASE_BASE + bonus;
   }
 
   // 2) Full keyword match
   if (normalizedKeyword.indexOf(" ") !== -1) {
-    if (normalizedText.includes(normalizedKeyword)) return 2 + bonus;
+    if (normalizedText.includes(normalizedKeyword)) return CS.FULL_MATCH_BASE + bonus;
 
     // Phrase coverage fallback: allow near phrase matches when enough words
     // from the phrase are still present (e.g., missing one token or a tiny typo).
@@ -286,17 +299,29 @@ export function calculateScore(inputTokens, keyword) {
       }
     }
 
-    if (matchedParts >= 2 && strongParts >= 1) {
+    if (
+      matchedParts >= CS.PHRASE_COVERAGE_MIN_MATCHED_PARTS &&
+      strongParts >= CS.PHRASE_COVERAGE_MIN_STRONG_PARTS
+    ) {
       var coverage = matchedParts / parts.length;
       if (matchedParts === parts.length) {
-        return 1 + coverage + (strongParts >= 2 ? 0.4 : 0);
+        return (
+          CS.PARTIAL_BASE +
+          coverage +
+          (strongParts >= CS.PHRASE_NEAR_COMPLETE_MIN_STRONG_PARTS
+            ? CS.PHRASE_COVERAGE_STRONG_BONUS
+            : 0)
+        );
       }
 
-      if (matchedParts === parts.length - 1 && strongParts >= 2) {
+      if (
+        matchedParts === parts.length - 1 &&
+        strongParts >= CS.PHRASE_NEAR_COMPLETE_MIN_STRONG_PARTS
+      ) {
         // Allow one missing phrase word only when input is shorter than phrase
         // or when there's a one-character placeholder token.
         if (inputTokens.length < parts.length || hasOneCharToken(inputTokens)) {
-          return 1 + coverage + 0.4;
+          return CS.PARTIAL_BASE + coverage + CS.PHRASE_COVERAGE_STRONG_BONUS;
         }
       }
     }
@@ -304,7 +329,7 @@ export function calculateScore(inputTokens, keyword) {
   }
 
   for (var i = 0; i < inputTokens.length; i++) {
-    if (inputTokens[i] === normalizedKeyword) return 2 + bonus;
+    if (inputTokens[i] === normalizedKeyword) return CS.FULL_MATCH_BASE + bonus;
   }
 
   // 3) Partial match (typos/slang)
@@ -313,18 +338,19 @@ export function calculateScore(inputTokens, keyword) {
       isPartialMatch(inputTokens[j], normalizedKeyword) ||
       isPrefixTypoMatch(inputTokens[j], normalizedKeyword)
     ) {
-      return 1 + bonus;
+      return CS.PARTIAL_BASE + bonus;
     }
   }
 
   // 4) Controlled typo match (very low confidence).
   for (var t = 0; t < inputTokens.length; t++) {
-    if (isTypoMatch(inputTokens[t], normalizedKeyword)) return 0.5;
+    if (isTypoMatch(inputTokens[t], normalizedKeyword)) return CS.CONTROLLED_TYPO;
   }
 
   // 5) Vowel-drop shorthand match (very low confidence).
   for (var v = 0; v < inputTokens.length; v++) {
-    if (isVowelDropMatch(inputTokens[v], normalizedKeyword)) return 0.4;
+    if (isVowelDropMatch(inputTokens[v], normalizedKeyword))
+      return CS.VOWEL_DROP_SHORTHAND;
   }
 
   return 0;

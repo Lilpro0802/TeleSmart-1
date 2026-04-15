@@ -11,6 +11,10 @@ import {
   normalizeForMatching,
   tokenizeForMatching,
 } from "./utils.js";
+import { SCORE_BOOSTS } from "./score-boosts.js";
+
+var I = SCORE_BOOSTS.intent;
+var V = SCORE_BOOSTS.validation;
 
 const INTENTS = {
   greeting: {
@@ -113,7 +117,7 @@ const INTENTS = {
   },
   small_talk: {
     priority: 1,
-    keywords: ["what's up", "whats up", "how's it going", "sup", "whats up", "what's up"],
+    keywords: ["what's up", "whats up", "how's it going", "sup"],
     responses: [
       "All good here! How can I assist you?",
       "Everything is running smoothly. What do you need?",
@@ -175,21 +179,6 @@ const INTENTS = {
 
 function isYouToken(token) {
   return token === "you" || token === "u" || token === "yu" || token === "ya";
-}
-
-function hasConversationPattern(tokens) {
-  var hasHow = tokens.indexOf("how") !== -1;
-  var hasWhat = tokens.indexOf("what") !== -1;
-  var hasAre = tokens.indexOf("are") !== -1 || tokens.indexOf("ar") !== -1 || tokens.indexOf("r") !== -1;
-  var hasYou = false;
-  for (var i = 0; i < tokens.length; i++) {
-    if (isYouToken(tokens[i])) {
-      hasYou = true;
-      break;
-    }
-  }
-  if (!hasYou) return false;
-  return (hasHow && hasYou) || (hasWhat && hasYou) || (hasAre && hasYou);
 }
 
 function getConversationPatternType(tokens) {
@@ -400,33 +389,20 @@ function passesFinalIntentValidation(rawInput, intentKey) {
   }
 
   // Dominance confirmation: strong multi-token intent evidence skips remaining checks.
-  if (analysis.matchedTokenCount >= 2) return true;
+  if (analysis.matchedTokenCount >= V.MIN_MATCHED_TOKENS_DOMINANCE) return true;
 
   // Context validation for weak evidence in multi-token inputs.
   var exemptContext = intentKey === "mood" || intentKey === "small_talk";
   if (
     !exemptContext &&
-    tokens.length >= 2 &&
-    analysis.keywordMatchCount < 2 &&
+    tokens.length >= V.MIN_INPUT_TOKENS_FOR_WEAK_CONTEXT_GATE &&
+    analysis.keywordMatchCount < V.MIN_KEYWORD_MATCHES_FOR_MULTI_TOKEN_CONFIDENCE &&
     analysis.phraseMatchCount === 0
   ) {
     return false;
   }
 
   return true;
-}
-
-/**
- * Normalize user input:
- * - lowercase
- * - trim
- * - remove simple punctuation (.,!?)
- * @param {string} input
- * @returns {string}
- */
-export function normalizeInput(input) {
-  // Kept for compatibility with existing modules.
-  return normalizeForMatching(input).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -469,20 +445,20 @@ export function getIntentMatch(rawInput) {
       if (kwScore > 0) {
         baseScore += kwScore;
         // Extra confidence for matched multi-word phrases.
-        if (kw.indexOf(" ") !== -1 && kwScore >= 2) {
-          baseScore += 2;
+        if (kw.indexOf(" ") !== -1 && kwScore >= I.STRONG_KEYWORD_SCORE_MIN) {
+          baseScore += I.MULTI_WORD_PHRASE_MATCH_EXTRA;
           phraseMatches += 1;
         }
         matches += 1;
-        if (kwScore > 0 && kwScore < 2) weakMatches += 1;
-        if (kwScore >= 2) strongMatches += 1;
+        if (kwScore > 0 && kwScore < I.STRONG_KEYWORD_SCORE_MIN) weakMatches += 1;
+        if (kwScore >= I.STRONG_KEYWORD_SCORE_MIN) strongMatches += 1;
         if (kw.length > longest) longest = kw.length;
       }
     }
 
     // Small phrase boost: reward multi-keyword evidence for same intent.
-    if (matches >= 2) {
-      baseScore += 1;
+    if (matches >= I.MULTI_KEYWORD_EVIDENCE_MIN_MATCHES) {
+      baseScore += I.MULTI_KEYWORD_EVIDENCE_BONUS;
     }
 
     // Weak token compensation for short conversational inputs.
@@ -490,32 +466,44 @@ export function getIntentMatch(rawInput) {
     if (matchedTokenCount > 0 && matches > matchedTokenCount) {
       matches = matchedTokenCount;
     }
-    if (matches >= 1 && tokens.length <= 4 && matchedTokenCount >= 2) {
-      baseScore += 0.6;
+    if (
+      matches >= 1 &&
+      tokens.length <= I.SHORT_UTTERANCE_MAX_TOKENS &&
+      matchedTokenCount >= I.SHORT_UTTERANCE_MIN_MATCHED_TOKENS
+    ) {
+      baseScore += I.SHORT_UTTERANCE_MATCHED_TOKEN_OVERLAP_BONUS;
     }
-    if (tokens.length <= 4 && weakMatches >= 2) {
-      baseScore += 0.35;
+    if (tokens.length <= I.SHORT_UTTERANCE_MAX_TOKENS && weakMatches >= I.WEAK_MATCH_CLUSTER_MIN) {
+      baseScore += I.WEAK_MATCH_CLUSTER_BONUS;
     }
 
     // Context pattern boost for casual conversational wording.
-    if ((key === "mood" || key === "small_talk") && hasConversationPattern(tokens) && matchedTokenCount >= 1) {
-      baseScore += 0.7;
+    if (
+      (key === "mood" || key === "small_talk") &&
+      getConversationPatternType(tokens) !== '' &&
+      matchedTokenCount >= I.CASUAL_PATTERN_MIN_MATCHED_TOKENS
+    ) {
+      baseScore += I.CASUAL_CONVERSATION_PATTERN_BONUS;
     }
 
     if (conversationPattern === "how_you" && key === "mood") {
-      baseScore += 2.1;
+      baseScore += I.HOW_ARE_YOU_MOOD_PATTERN_BOOST;
     }
     if (conversationPattern === "what_you" && key === "small_talk") {
-      baseScore += 2.1;
+      baseScore += I.WHAT_DOING_SMALL_TALK_PATTERN_BOOST;
     }
     if (conversationPattern === "are_you" && key === "mood") {
-      baseScore += 1.2;
+      baseScore += I.ARE_YOU_MOOD_PATTERN_BOOST;
     }
 
     // Short token relaxation: allow low-confidence short tokens when
     // another strong signal already exists in a multi-token input.
-    if (scoringTokens.length > 1 && strongMatches >= 1 && hasShortSoftMatch(scoringTokens, keywordParts)) {
-      baseScore += 0.35;
+    if (
+      scoringTokens.length >= I.MIN_SCORING_TOKENS_FOR_SHORT_SOFT &&
+      strongMatches >= I.MIN_STRONG_MATCHES_FOR_SHORT_SOFT &&
+      hasShortSoftMatch(scoringTokens, keywordParts)
+    ) {
+      baseScore += I.SHORT_SOFT_ANCHOR_BONUS;
     }
 
     // Priority should only apply when there is a real base match.
@@ -526,10 +514,12 @@ export function getIntentMatch(rawInput) {
       conversationPattern === "what_you" &&
       key === "small_talk" &&
       bestKey === "greeting" &&
-      score >= bestScore - 1.2;
+      score >= bestScore - I.SMALL_TALK_VS_GREETING_SCORE_MARGIN;
 
     var dominance =
-      matchedTokenCount >= 2 && bestMatchedTokenCount <= 1 && score >= bestScore - 0.8;
+      matchedTokenCount >= I.DOMINANCE_MIN_MATCHED_TOKENS &&
+      bestMatchedTokenCount <= I.DOMINANCE_OPPONENT_MAX_MATCHED_TOKENS &&
+      score >= bestScore - I.DOMINANCE_NEAR_TIE_MARGIN;
 
     if (
       score > bestScore ||
@@ -554,28 +544,29 @@ export function getIntentMatch(rawInput) {
   // Safe fallback: if nothing matches, or the winner isn't clearly better than runner-up.
   if (bestScore <= 0) return { key: "unknown", score: 0 };
   // If the best intent is still very weak, treat it as unknown.
-  if (bestScore < 1) return { key: "unknown", score: 0 };
+  if (bestScore < I.MIN_ACCEPT_INTENT_SCORE) return { key: "unknown", score: 0 };
 
   // Minimum confidence rule for multi-token inputs.
   var conversationExempt =
     (bestKey === "mood" || bestKey === "small_talk") && conversationPattern !== "";
   if (
-    tokens.length >= 2 &&
-    bestMatches < 2 &&
+    tokens.length >= V.MIN_INPUT_TOKENS_FOR_WEAK_CONTEXT_GATE &&
+    bestMatches < V.MIN_KEYWORD_MATCHES_FOR_MULTI_TOKEN_CONFIDENCE &&
     bestPhraseMatches === 0 &&
-    bestMatchedTokenCount < 2 &&
+    bestMatchedTokenCount < V.MIN_MATCHED_TOKENS_FOR_MULTI_TOKEN_CONFIDENCE &&
     !conversationExempt
   ) {
     return { key: "unknown", score: 0 };
   }
   // Use clarify only for weak/ambiguous wins, not strong clear matches.
-  var allowShortStrongIntent = bestStrongMatches > 0 && tokens.length <= 3;
+  var allowShortStrongIntent =
+    bestStrongMatches > 0 && tokens.length <= I.ALLOW_SHORT_STRONG_UTTERANCE_MAX_TOKENS;
   if (
     secondScore > 0 &&
-    bestScore - secondScore < 1 &&
-    bestScore < 5 &&
-    tokens.length > 1 &&
-    bestLongest < 8 &&
+    bestScore - secondScore < I.CLARIFY_RUNNER_UP_GAP_MAX &&
+    bestScore < I.CLARIFY_BEST_SCORE_CEILING &&
+    tokens.length >= I.CLARIFY_MIN_INPUT_TOKEN_COUNT &&
+    bestLongest < I.CLARIFY_LONGEST_KEYWORD_LEN_LT &&
     !allowShortStrongIntent
   ) {
     return { key: "clarify", score: bestScore };

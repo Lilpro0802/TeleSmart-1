@@ -35,6 +35,13 @@ function clearChatSessionIfReload() {
 
 function init() {
   if (document.getElementById(ROOT_ID)) {
+    if (
+      typeof window !== "undefined" &&
+      window.RishitChatbot &&
+      typeof window.RishitChatbot.scrollToBottom === "function"
+    ) {
+      window.RishitChatbot.scrollToBottom();
+    }
     return { ok: false, reason: "already-initialized" };
   }
 
@@ -51,15 +58,13 @@ function init() {
   });
   var messaging = setupMessaging(refs);
 
-  if (typeof window !== "undefined") {
-    window.handleButtonAction = function (action) {
-      messaging.handleButtonAction(action);
-    };
-  }
-
   var startedEmpty = messaging.isEmpty();
   if (startedEmpty) {
     messaging.showFirstInteraction();
+  }
+
+  if (typeof messaging.scrollToBottom === "function") {
+    messaging.scrollToBottom();
   }
 
   if (typeof refs.setOpen === "function" && !hasPanelPreference && startedEmpty) {
@@ -68,7 +73,7 @@ function init() {
     }, AUTO_OPEN_DELAY_MS);
   }
 
-  return { ok: true };
+  return { ok: true, messaging: messaging };
 }
 
 function boot() {
@@ -85,6 +90,18 @@ if (document.readyState === "loading") {
 if (typeof window !== "undefined") {
   window.RishitChatbot = {
     init: init,
+    scrollToBottom: function () {
+      var root = document.getElementById(ROOT_ID);
+      if (!root) return;
+      var messagesEl = root.querySelector(".rishit-chatbot-messages");
+      if (!messagesEl) return;
+      requestAnimationFrame(function () {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        requestAnimationFrame(function () {
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        });
+      });
+    },
     version: VERSION,
   };
 }

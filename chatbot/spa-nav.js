@@ -145,6 +145,13 @@ async function navigateSpa(url, pushState) {
     }
 
     await executePageScripts(nextDoc);
+    if (
+      typeof window !== "undefined" &&
+      window.RishitChatbot &&
+      typeof window.RishitChatbot.scrollToBottom === "function"
+    ) {
+      window.RishitChatbot.scrollToBottom();
+    }
     window.scrollTo(0, 0);
   } catch (err) {
     window.location.assign(url);

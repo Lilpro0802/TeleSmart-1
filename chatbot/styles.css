@@ -32,6 +32,22 @@
   -webkit-font-smoothing: antialiased;
 }
 
+@keyframes cbMessageIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cbTypingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
 #rishit-chatbot-root * {
   box-sizing: border-box;
 }
@@ -62,7 +78,7 @@
   transform: scale(0.96) translateY(8px);
   pointer-events: none;
   visibility: hidden;
-  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0.22s,
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), visibility 0.22s,
     width 0.2s ease, height 0.2s ease, max-height 0.2s ease;
 }
 
@@ -220,11 +236,31 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cb-gray-200) transparent;
+}
+
+#rishit-chatbot-root .rishit-chatbot-messages::-webkit-scrollbar {
+  width: 4px;
+}
+
+#rishit-chatbot-root .rishit-chatbot-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#rishit-chatbot-root .rishit-chatbot-messages::-webkit-scrollbar-thumb {
+  background: var(--cb-gray-200);
+  border-radius: 99px;
+}
+
+#rishit-chatbot-root .rishit-chatbot-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--cb-gray-500);
 }
 
 #rishit-chatbot-root .rishit-chatbot-message {
   display: flex;
   width: 100%;
+  animation: cbMessageIn 0.18s ease-out both;
 }
 
 #rishit-chatbot-root .rishit-chatbot-message--user {
@@ -375,7 +411,7 @@
 }
 
 #rishit-chatbot-root .rishit-chatbot-send:active {
-  transform: translateY(0);
+  transform: scale(0.91);
 }
 
 #rishit-chatbot-root .rishit-chatbot-send:focus-visible {
@@ -435,6 +471,50 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--cb-gray-500);
+}
+
+/* Typing indicator dots */
+#rishit-chatbot-root .rishit-chatbot-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+}
+
+#rishit-chatbot-root .rishit-chatbot-typing-indicator span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cb-gray-500);
+  animation: cbTypingBounce 1.2s ease-in-out infinite;
+  display: block;
+}
+
+#rishit-chatbot-root .rishit-chatbot-typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+#rishit-chatbot-root .rishit-chatbot-typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@media (max-width: 480px) {
+  #rishit-chatbot-root {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  #rishit-chatbot-root .rishit-chatbot-panel {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 72vh;
+    max-height: 72vh;
+    border-radius: 20px 20px 0 0;
+  }
 }
 
 @media (max-width: 380px) {
