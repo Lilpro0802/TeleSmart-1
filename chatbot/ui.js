@@ -115,6 +115,47 @@ function svgIconExpandIn() {
   return svg;
 }
 
+function svgIconNavBack() {
+  var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("class", NS + "-nav-icon");
+  var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M19 12H5M5 12L12 19M5 12L12 5");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(path);
+  return svg;
+}
+
+function svgIconNavHome() {
+  var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("class", NS + "-nav-icon");
+  var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  var poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  poly.setAttribute("points", "9 22 9 12 15 12 15 22");
+  poly.setAttribute("stroke", "currentColor");
+  poly.setAttribute("stroke-width", "2");
+  poly.setAttribute("stroke-linecap", "round");
+  poly.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(path);
+  svg.appendChild(poly);
+  return svg;
+}
+
 var LS_PANEL_EXPANDED = "rishit-chatbot-panel-expanded";
 
 function applyPanelOpenVisual(refs, open) {
@@ -208,6 +249,68 @@ function bindPanel(refs) {
   return setOpen;
 }
 
+function enhanceFaqUi(refs) {
+  if (!refs || !refs.messagesEl) return;
+
+  function applyFaqLabels() {
+    var blocks = refs.messagesEl.querySelectorAll(".rishit-chatbot-bot-block");
+    for (var i = 0; i < blocks.length; i++) {
+      var block = blocks[i];
+      var bubble = block.querySelector(".rishit-chatbot-bubble");
+      var actions = block.querySelector(".rishit-chatbot-actions");
+      if (!bubble || !actions) continue;
+
+      var bubbleText = (bubble.textContent || "").replace(/\s+/g, " ").trim();
+      var isFaqIntro =
+        (bubbleText.indexOf("What would you like help with?") === 0 &&
+         bubbleText.indexOf("FAQ Categories") >= 0) ||
+        bubble.classList.contains(NS + "-bubble--faq-intro");
+
+      if (isFaqIntro) {
+        bubble.textContent = "What would you like help with?";
+        bubble.classList.add(NS + "-bubble--faq-intro");
+        if (!block.querySelector(".rishit-chatbot-section-label")) {
+          var label = el("div", NS + "-section-label", {
+            textContent: "FAQ Categories",
+          });
+          var actionGroup =
+            block.querySelector("." + NS + "-action-group") ||
+            el("div", NS + "-action-group");
+          if (!actionGroup.parentNode) {
+            block.insertBefore(actionGroup, actions);
+            actionGroup.appendChild(actions);
+          }
+          actionGroup.insertBefore(label, actionGroup.firstChild);
+        } else if (!actions.parentNode.classList.contains(NS + "-action-group")) {
+          var existingGroup =
+            block.querySelector("." + NS + "-action-group") ||
+            el("div", NS + "-action-group");
+          if (!existingGroup.parentNode) {
+            block.insertBefore(existingGroup, actions);
+          }
+          existingGroup.appendChild(actions);
+        }
+      }
+    }
+  }
+
+  var observer = new MutationObserver(function () {
+    observer.disconnect();
+    applyFaqLabels();
+    observer.observe(refs.messagesEl, {
+      childList: true,
+      subtree: true,
+    });
+  });
+
+  observer.disconnect();
+  applyFaqLabels();
+  observer.observe(refs.messagesEl, {
+    childList: true,
+    subtree: true,
+  });
+}
+
 function buildDOM() {
   var root = el("div", null, { id: ROOT_ID });
   var wrap = el("div", NS + "-wrap");
@@ -221,6 +324,7 @@ function buildDOM() {
   panel.id = NS + "-panel";
 
   var header = el("div", NS + "-header");
+  var headerTop = el("div", NS + "-header-top");
   var headerMain = el("div", NS + "-header-main");
 
   var avatarHeader = el("img", NS + "-avatar " + NS + "-avatar--header", {
@@ -237,6 +341,7 @@ function buildDOM() {
     textContent: "Smarty",
   });
   var status = el("p", NS + "-status", { textContent: "Online" });
+  
   titleBlock.appendChild(hTitle);
   titleBlock.appendChild(status);
 
@@ -262,8 +367,9 @@ function buildDOM() {
   headerActions.appendChild(expandBtn);
   headerActions.appendChild(closeBtn);
 
-  header.appendChild(headerMain);
-  header.appendChild(headerActions);
+  headerTop.appendChild(headerMain);
+  headerTop.appendChild(headerActions);
+  header.appendChild(headerTop);
 
   var messages = el("div", NS + "-messages");
   messages.setAttribute("role", "log");
@@ -283,9 +389,33 @@ function buildDOM() {
 
   composer.appendChild(input);
   composer.appendChild(sendBtn);
+  
+  var navBar = el("div", NS + "-nav-bar", {
+    role: "navigation",
+    "aria-label": "Chat navigation",
+  });
+  var navBack = el("button", NS + "-nav-btn", {
+    type: "button",
+    "data-chatbot-action": "BACK",
+    "aria-label": "Go back",
+  });
+  navBack.appendChild(svgIconNavBack());
+  navBack.appendChild(el("span", null, { textContent: "Back" }));
+  
+  var navHome = el("button", NS + "-nav-btn", {
+    type: "button",
+    "data-chatbot-action": "MAIN_MENU",
+    "aria-label": "Go to home",
+  });
+  navHome.appendChild(svgIconNavHome());
+  navHome.appendChild(el("span", null, { textContent: "Home" }));
+  
+  navBar.appendChild(navBack);
+  navBar.appendChild(navHome);
 
   panel.appendChild(header);
   panel.appendChild(messages);
+  panel.appendChild(navBar);
   panel.appendChild(composer);
 
   var launcher = el("button", NS + "-launcher", {
@@ -328,6 +458,9 @@ function buildDOM() {
     messagesEl: messages,
     inputEl: input,
     sendBtn: sendBtn,
+    navBackEl: navBack,
+    navHomeEl: navHome,
+    navBarEl: navBar,
   };
 }
 
@@ -357,5 +490,6 @@ export function setupChatbotUI(options) {
 
   bindExpandToggle(refs);
   refs.setOpen = bindPanel(refs);
+  enhanceFaqUi(refs);
   return refs;
 }

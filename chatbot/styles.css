@@ -101,13 +101,19 @@
 
 #rishit-chatbot-root .rishit-chatbot-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 8px;
   padding: 14px 14px 12px;
   border-bottom: 1px solid var(--cb-gray-100);
   background: linear-gradient(180deg, var(--cb-gray-50) 0%, var(--cb-bg) 100%);
   flex-shrink: 0;
+}
+
+#rishit-chatbot-root .rishit-chatbot-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 #rishit-chatbot-root .rishit-chatbot-header-actions {
@@ -172,7 +178,70 @@
 }
 
 #rishit-chatbot-root .rishit-chatbot-titles {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  flex: 1;
+}
+
+#rishit-chatbot-root .rishit-chatbot-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.04);
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+#rishit-chatbot-root .rishit-chatbot-nav-bar:empty {
+  display: none;
+}
+
+#rishit-chatbot-root .rishit-chatbot-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  background: var(--cb-gray-100);
+  border: 1px solid var(--cb-gray-200);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cb-gray-700);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+#rishit-chatbot-root .rishit-chatbot-nav-btn:hover:not(:disabled) {
+  background: var(--cb-blue);
+  border-color: var(--cb-blue);
+  color: var(--cb-user-fg);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+#rishit-chatbot-root .rishit-chatbot-nav-btn:focus-visible {
+  outline: 2px solid var(--cb-blue);
+  outline-offset: 2px;
+}
+
+#rishit-chatbot-root .rishit-chatbot-nav-btn:disabled {
+  display: none;
+}
+
+#rishit-chatbot-root .rishit-chatbot-nav-icon {
+  width: 16px;
+  height: 16px;
 }
 
 #rishit-chatbot-root .rishit-chatbot-headline {
@@ -272,44 +341,61 @@
 }
 
 #rishit-chatbot-root .rishit-chatbot-bot-block {
-  max-width: 85%;
+  max-width: 90%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 6px;
 }
 
 #rishit-chatbot-root .rishit-chatbot-bot-block .rishit-chatbot-bubble {
   max-width: 100%;
 }
 
+#rishit-chatbot-root .rishit-chatbot-action-group {
+  background: #f8f9fb;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+#rishit-chatbot-root .rishit-chatbot-section-label {
+  margin: 0 0 7px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--cb-gray-500);
+}
+
 #rishit-chatbot-root .rishit-chatbot-actions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding-left: 2px;
+  gap: 3px;
+  margin-top: 0;
+  padding-left: 0;
 }
 
 #rishit-chatbot-root .rishit-chatbot-action-btn {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 10px 12px;
+  padding: 8px 10px;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--cb-gray-900);
-  background: var(--cb-bg);
+  color: var(--cb-gray-700);
+  background: #ffffff;
   border: 1px solid var(--cb-gray-200);
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 #rishit-chatbot-root .rishit-chatbot-action-btn:hover {
-  background: var(--cb-gray-50);
-  border-color: var(--cb-blue);
-  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.12);
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.38);
+  color: var(--cb-gray-900);
 }
 
 #rishit-chatbot-root .rishit-chatbot-action-btn:focus-visible {
@@ -324,12 +410,17 @@
 }
 
 #rishit-chatbot-root .rishit-chatbot-bubble {
-  max-width: 85%;
-  padding: 10px 14px;
-  border-radius: 14px;
+  max-width: 90%;
+  padding: 9px 12px;
+  border-radius: 12px;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.45;
   word-wrap: break-word;
+}
+
+#rishit-chatbot-root .rishit-chatbot-bubble--faq-intro {
+  padding: 8px 11px;
+  font-size: 13px;
 }
 
 #rishit-chatbot-root .rishit-chatbot-message--user .rishit-chatbot-bubble {
