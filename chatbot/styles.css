@@ -617,6 +617,13 @@
     max-height: 72vh;
     border-radius: 20px 20px 0 0;
   }
+
+  /* Hide the launcher pill when the panel is open so it doesn't cover the send button */
+  #rishit-chatbot-root .rishit-chatbot-panel.rishit-chatbot-open ~ .rishit-chatbot-launcher {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+  }
 }
 
 @media (max-width: 380px) {
