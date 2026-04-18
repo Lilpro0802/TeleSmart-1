@@ -9,7 +9,7 @@ export var ROOT_ID = NS + "-root";
 
 function injectFont() {
   var href =
-    "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
+    "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap";
   if (document.querySelector('link[href="' + href + '"]')) return;
   var link = document.createElement("link");
   link.rel = "stylesheet";
@@ -192,7 +192,7 @@ function bindExpandToggle(refs) {
         LS_PANEL_EXPANDED,
         panel.classList.contains(expandedClass) ? "true" : "false"
       );
-    } catch (err) {}
+    } catch (err) { }
     syncExpandUi();
   });
 
@@ -223,7 +223,7 @@ function bindPanel(refs) {
         "rishit-chatbot-panel-open",
         open ? "true" : "false"
       );
-    } catch (err) {}
+    } catch (err) { }
     if (open) {
       window.setTimeout(function () {
         refs.inputEl.focus();
@@ -263,7 +263,7 @@ function enhanceFaqUi(refs) {
       var bubbleText = (bubble.textContent || "").replace(/\s+/g, " ").trim();
       var isFaqIntro =
         (bubbleText.indexOf("What would you like help with?") === 0 &&
-         bubbleText.indexOf("FAQ Categories") >= 0) ||
+          bubbleText.indexOf("FAQ Categories") >= 0) ||
         bubble.classList.contains(NS + "-bubble--faq-intro");
 
       if (isFaqIntro) {
@@ -312,7 +312,7 @@ function enhanceFaqUi(refs) {
 }
 
 function buildDOM() {
-  var root = el("div", null, { id: ROOT_ID });
+  var root = el("div", "theme-premium", { id: ROOT_ID });
   var wrap = el("div", NS + "-wrap");
 
   var panel = el("div", NS + "-panel", {
@@ -341,7 +341,7 @@ function buildDOM() {
     textContent: "Smarty",
   });
   var status = el("p", NS + "-status", { textContent: "Online" });
-  
+
   titleBlock.appendChild(hTitle);
   titleBlock.appendChild(status);
 
@@ -389,7 +389,7 @@ function buildDOM() {
 
   composer.appendChild(input);
   composer.appendChild(sendBtn);
-  
+
   var navBar = el("div", NS + "-nav-bar", {
     role: "navigation",
     "aria-label": "Chat navigation",
@@ -401,7 +401,7 @@ function buildDOM() {
   });
   navBack.appendChild(svgIconNavBack());
   navBack.appendChild(el("span", null, { textContent: "Back" }));
-  
+
   var navHome = el("button", NS + "-nav-btn", {
     type: "button",
     "data-chatbot-action": "MAIN_MENU",
@@ -409,7 +409,7 @@ function buildDOM() {
   });
   navHome.appendChild(svgIconNavHome());
   navHome.appendChild(el("span", null, { textContent: "Home" }));
-  
+
   navBar.appendChild(navBack);
   navBar.appendChild(navHome);
 
@@ -478,7 +478,7 @@ export function setupChatbotUI(options) {
     if (window.sessionStorage.getItem(LS_PANEL_EXPANDED) === "true") {
       refs.panel.classList.add(NS + "-expanded");
     }
-  } catch (err) {}
+  } catch (err) { }
 
   refs.panel.classList.add(NS + "-suppress-transition");
   applyPanelOpenVisual(refs, !!options.initialPanelOpen);

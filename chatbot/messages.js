@@ -452,7 +452,7 @@ function getStorageJson(key, fallbackValue) {
 function setStorageJson(key, value) {
   try {
     window.sessionStorage.setItem(key, JSON.stringify(value));
-  } catch (err) {}
+  } catch (err) { }
 }
 
 function createMessagePayload(text, buttons) {
@@ -683,9 +683,9 @@ export function setupMessaging(els) {
       typeof content === "string"
         ? createMessagePayload(content)
         : createMessagePayload(
-            content && content.text,
-            content && content.buttons
-          );
+          content && content.text,
+          content && content.buttons
+        );
     var row = createMessageNode(role, payload);
 
     messagesEl.appendChild(row);
